@@ -30,6 +30,7 @@
 <script>
     import axios from 'axios'
     import { message } from '../../components/message'
+    import { createRtcTrace } from '../../common/rtc-trace'
     import {
         createRtcStreamID,
         createStableRtcUserID,
@@ -45,7 +46,7 @@
     const MAX_RETRY = 2
     const HEARTBEAT_INTERVAL = 3000
     const RECORDING_STOP_UI_TIMEOUT = 2000
-    const REMOTE_NO_PLAY_CONFIRM_DELAY = 10000
+    const REMOTE_NO_PLAY_CONFIRM_DELAY = 3500
     const ZEGO_DECODE_FAIL_ERROR_CODE = 1003081
     const ZEGO_TRANSCODE_TEMPLATE_ID = Number(process.env.VUE_APP_ZEGO_TRANSCODE_TEMPLATE_ID || 0)
     const ZEGO_TRANSCODE_ON_DECODE_FAIL = process.env.VUE_APP_ZEGO_TRANSCODE_ON_DECODE_FAIL !== 'false'
@@ -97,6 +98,7 @@
                 networkStatus: '未连接',
                 networkWarning: false,
                 isFullscreen: false,
+                trace: null,
             }
         },
         mounted () {
@@ -108,6 +110,12 @@
             this.recordEnabled = this.normalizeQueryBoolean(this.$route.query.record)
             this.userID = this.$route.query.userID || createStableRtcUserID(this.roomID, this.role)
             this.streamID = createRtcStreamID(this.roomID, this.userID)
+            this.trace = createRtcTrace({
+                roomID: this.roomID,
+                userID: this.userID,
+                role: this.role,
+                streamID: this.streamID,
+            })
             document.addEventListener('fullscreenchange', this.handleFullscreenChange)
             window.addEventListener('message', this.handleParentCommand)
             window.addEventListener('pagehide', this.handlePageHide)
@@ -130,6 +138,9 @@
             if (!this.cleanupCompleted) {
                 this.sendPageHideBeacons()
             }
+            if (this.trace) {
+                this.trace.print()
+            }
         },
         methods: {
             async joinChannel () {
@@ -150,18 +161,25 @@
                 try {
                     this.joining = true
                     this.desc = '正在进入视频问诊...'
+                    this.trace.start('fetchRtcSession')
                     const session = await this.fetchRtcSession()
                     this.session = session
+                    this.userID = session.userID
+                    this.streamID = session.streamID
                     this.leaseID = session.leaseID || ''
                     if (this.terminating) {
                         return
                     }
 
+                    this.trace.start('createEngine')
                     this.client = new window.ZegoExpressEngine(Number(session.appID), session.server || '')
                     this.client.setDebugVerbose(false)
                     this.bindEvents()
+                    this.trace.end('createEngine')
 
+                    this.trace.start('checkSystemRequirements')
                     const capability = await this.client.checkSystemRequirements()
+                    this.trace.end('checkSystemRequirements')
                     if (!capability.webRTC) {
                         throw new Error('当前浏览器不支持 WebRTC')
                     }
@@ -169,12 +187,14 @@
                         return
                     }
 
+                    this.trace.start('loginRoom')
                     const loggedIn = await this.client.loginRoom(
                         this.roomID,
                         session.token,
                         { userID: this.userID, userName: this.userID },
                         { userUpdate: true }
                     )
+                    this.trace.end('loginRoom')
                     if (!loggedIn) {
                         throw new Error('登录 ZEGO 房间失败')
                     }
@@ -182,6 +202,7 @@
                         return
                     }
 
+                    this.trace.mark('publish_ready')
                     await this.initLocalStream()
                     if (this.terminating) {
                         return
@@ -202,6 +223,10 @@
                         return
                     }
                     console.error('加入房间失败', error)
+                    if (this.trace) {
+                        this.trace.fail('joinChannel', error)
+                        this.trace.print()
+                    }
                     const tip = this.formatError(error, '加入房间失败')
                     this.notifyParent('error', tip)
                     message(tip)
@@ -286,6 +311,9 @@
 
                 this.client.on('publisherStateUpdate', result => {
                     console.warn('推流状态', result)
+                    if (result && result.streamID === this.streamID && result.state === 'PUBLISHING') {
+                        this.trace.mark('publisherStateUpdate_PUBLISHING', { streamID: result.streamID })
+                    }
                     if (result && result.errorCode) {
                         this.retryPublishing(result.errorCode)
                     }
@@ -293,6 +321,9 @@
 
                 this.client.on('playerStateUpdate', result => {
                     console.warn('拉流状态', result)
+                    if (result && result.streamID && result.streamID === this.remoteStreamID && result.state === 'PLAYING') {
+                        this.trace.mark('playerStateUpdate_PLAYING', { streamID: result.streamID })
+                    }
                     if (result && result.state === 'NO_PLAY' && result.streamID && result.streamID === this.remoteStreamID) {
                         this.scheduleRemoteNoPlay(result.streamID)
                     }
@@ -314,6 +345,7 @@
                     if (updateType === 'ADD') {
                         const remote = streamList.find(item => item.streamID !== this.streamID)
                         if (remote) {
+                            this.trace.mark('roomStreamUpdate_ADD', { streamID: remote.streamID })
                             try {
                                 await this.playRemoteStream(remote.streamID, remote)
                             } catch (error) {
@@ -372,6 +404,7 @@
             },
             async initLocalStream () {
                 try {
+                    this.trace.start('createZegoStream')
                     this.localStream = await this.client.createZegoStream({
                         camera: {
                             audio: true,
@@ -379,7 +412,9 @@
                             videoQuality: 2,
                         },
                     })
+                    this.trace.end('createZegoStream')
                 } catch (error) {
+                    this.trace.fail('createZegoStream', error)
                     throw new Error(this.formatError(error, '无法打开摄像头或麦克风，请检查浏览器授权和设备占用'))
                 }
                 this.playLocalPreview()
@@ -397,15 +432,32 @@
             },
             async publishLocalStream () {
                 try {
+                    this.trace.start('startPublishingStream')
                     await this.client.startPublishingStream(this.streamID, this.localStream)
+                    this.trace.end('startPublishingStream')
                     this.publishRetry = 0
+                    // 自动化埋点：推流成功时刻（performance.timeOrigin 相对值，供测试脚本换算成绝对时间）
+                    if (typeof window !== 'undefined' && typeof window.__onRtcEvent === 'function') {
+                        try {
+                            window.__onRtcEvent('publish_ok', {
+                                streamID: this.streamID,
+                                roomID: this.roomID,
+                                userID: this.userID,
+                                ts: performance.now(),
+                                absTs: Date.now(),
+                            })
+                        } catch (e) { /* 埋点异常不影响业务 */ }
+                    }
+                    this.trace.start('startLocalRecording')
                     await this.startLocalRecording()
+                    this.trace.end('startLocalRecording')
                 } catch (error) {
                     if (this.publishRetry < MAX_RETRY) {
                         this.publishRetry += 1
                         await this.wait(RETRY_DELAY)
                         return this.publishLocalStream()
                     }
+                    this.trace.fail('startPublishingStream', error)
                     throw new Error(this.formatError(error, '本地推流失败，请检查网络后重试'))
                 }
             },
@@ -427,14 +479,29 @@
                         streamID,
                         playOptions: playOptions || {},
                     })
+                    this.trace.start('startPlayingStream', { streamID })
                     this.remoteStream = playOptions
                         ? await this.client.startPlayingStream(streamID, playOptions)
                         : await this.client.startPlayingStream(streamID)
+                    this.trace.end('startPlayingStream', { streamID })
                     this.clearRemoteMediaElements()
                     this.remoteView = this.client.createRemoteStreamView(this.remoteStream)
+                    this.trace.mark('remoteView_play', { streamID })
                     this.remoteView.play(this.$refs.remote, { objectFit: 'contain', enableAutoplayDialog: true })
                     this.isDesc = false
                     this.playRetry = 0
+                    // 自动化埋点：拉流首帧成功时刻（医生看到患者）
+                    if (typeof window !== 'undefined' && typeof window.__onRtcEvent === 'function') {
+                        try {
+                            window.__onRtcEvent('play_ok', {
+                                streamID,
+                                roomID: this.roomID,
+                                userID: this.userID,
+                                ts: performance.now(),
+                                absTs: Date.now(),
+                            })
+                        } catch (e) { /* 埋点异常不影响业务 */ }
+                    }
                     await this.startLocalRecording()
                 } catch (error) {
                     this.remoteStreamID = ''
@@ -504,8 +571,8 @@
                     if (this.leaving || this.pendingNoPlayStreamID !== streamID || this.remoteStreamID !== streamID) {
                         return
                     }
-                    console.warn('远端拉流持续 NO_PLAY，提示用户等待恢复', { streamID })
-                    this.networkStatus = '远端视频连接异常，正在尝试恢复'
+                    console.warn('远端拉流持续 NO_PLAY，等待 SDK 内部恢复或流删除事件', { streamID })
+                    this.networkStatus = '远端网络异常，正在恢复'
                     this.networkWarning = true
                 }, REMOTE_NO_PLAY_CONFIRM_DELAY)
             },
@@ -544,12 +611,18 @@
                 if (this.isRemoteDecodeFail(result)) {
                     const now = Date.now()
                     if (!this.decodeWarningAt || now - this.decodeWarningAt > 5000) {
-                        console.warn('远端视频解码异常，已隐藏前台提示并等待 SDK 自恢复', {
+                        console.warn('远端视频解码异常，保留当前拉流并等待 SDK 自恢复', {
                             result,
                             transcodeEnabled: this.hasTranscodeFallback(),
                             codecTemplateID: ZEGO_TRANSCODE_TEMPLATE_ID,
                         })
                         this.decodeWarningAt = now
+                    }
+                    this.networkWarning = true
+                    if (this.hasTranscodeFallback()) {
+                        this.networkStatus = '远端视频解码异常，正在恢复'
+                    } else {
+                        this.networkStatus = '远端视频解码异常，等待恢复'
                     }
                     if (result.state === 'NO_PLAY') {
                         this.scheduleRemoteNoPlay(result.streamID)

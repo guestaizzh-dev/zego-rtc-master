@@ -1,5 +1,6 @@
 package com.toyeah.dispatching.controller;
 
+import java.security.SecureRandom;
 import com.toyeah.dispatching.dto.RecordingPageResponse;
 import com.toyeah.dispatching.dto.RecordingResponse;
 import com.toyeah.dispatching.dto.RtcRoomRecord;
@@ -43,7 +44,7 @@ import java.util.Map;
 public class ApiController {
 
     private static final Logger logger = LoggerFactory.getLogger(ApiController.class);
-
+    private static final SecureRandom RTC_USER_ID_RANDOM = new SecureRandom();
     private final ZegoTokenService zegoTokenService;
     private final LocalRecordingService localRecordingService;
     private final RoomAccessService roomAccessService;
@@ -67,6 +68,7 @@ public class ApiController {
                                               HttpServletRequest httpRequest) {
         try {
             fillRequestMeta(request, httpRequest, "web");
+            prepareZegoUserID(request);
             RoomAccessService.EnterResult enterResult = roomAccessService.enter(request);
             try {
                 RtcSessionResponse response = zegoTokenService.createSession(request);
@@ -565,6 +567,36 @@ public class ApiController {
         request.setClientIP(resolveClientIP(httpRequest));
         request.setUserAgent(httpRequest.getHeader("User-Agent"));
     }
+    private void prepareZegoUserID(RtcSessionRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("通话参数不能为空");
+        }
+
+        // 续 Token 必须继续使用本次通话已生成的随机 userID。
+        if (request.getLeaseID() != null && !request.getLeaseID().trim().isEmpty()) {
+            return;
+        }
+
+        String sourceUserID = request.getUserID() == null ? "" : request.getUserID().trim();
+        if (sourceUserID.isEmpty()) {
+            throw new IllegalArgumentException("用户 ID 不能为空");
+        }
+
+        byte[] randomBytes = new byte[18]; // 144 bit
+        RTC_USER_ID_RANDOM.nextBytes(randomBytes);
+        String suffix = Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(randomBytes);
+
+        int maxPrefixLength = 64 - suffix.length() - 1;
+        String prefix = sourceUserID.length() > maxPrefixLength
+                ? sourceUserID.substring(0, maxPrefixLength)
+                : sourceUserID;
+
+        request.setUserID(prefix + "_" + suffix);
+        request.setStreamID(null);//必须有。否则前端传来的旧流 ID 没变，Token 中的用户和流会不一致。
+    }
+
 
     private String resolveClientIP(HttpServletRequest request) {
         String forwardedFor = request.getHeader("X-Forwarded-For");
@@ -576,5 +608,8 @@ public class ApiController {
             return realIP.trim();
         }
         return request.getRemoteAddr();
+
     }
+
+
 }
