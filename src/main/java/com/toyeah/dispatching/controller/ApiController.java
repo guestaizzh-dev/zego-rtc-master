@@ -1,6 +1,5 @@
 package com.toyeah.dispatching.controller;
 
-import java.security.SecureRandom;
 import com.toyeah.dispatching.dto.RecordingPageResponse;
 import com.toyeah.dispatching.dto.RecordingResponse;
 import com.toyeah.dispatching.dto.RtcRoomRecord;
@@ -38,6 +37,7 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.security.SecureRandom;
 
 @RestController
 @RequestMapping("/api")
@@ -45,6 +45,9 @@ public class ApiController {
 
     private static final Logger logger = LoggerFactory.getLogger(ApiController.class);
     private static final SecureRandom RTC_USER_ID_RANDOM = new SecureRandom();
+    private static final int ZEGO_USER_ID_MAX_LENGTH = 64;
+    private static final int RTC_USER_ID_RANDOM_BYTES = 18;
+
     private final ZegoTokenService zegoTokenService;
     private final LocalRecordingService localRecordingService;
     private final RoomAccessService roomAccessService;
@@ -446,6 +449,37 @@ public class ApiController {
         return Collections.singletonMap("error", message);
     }
 
+    /**
+     * ZEGO userID is globally unique per AppID. Keep the business ID as a prefix for audit,
+     * and add 144 bits of random entropy for each new RTC session to prevent cross-room kicks.
+     * A token renewal always carries leaseID and must retain the already assigned ID.
+     */
+    private void prepareZegoUserID(RtcSessionRequest request) {
+        if (request == null || normalize(request.getLeaseID()) != null) {
+            return;
+        }
+        String sourceUserID = normalize(request.getUserID());
+        if (sourceUserID == null) {
+            return;
+        }
+        byte[] randomBytes = new byte[RTC_USER_ID_RANDOM_BYTES];
+        RTC_USER_ID_RANDOM.nextBytes(randomBytes);
+        String suffix = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+        int prefixLength = Math.max(1, ZEGO_USER_ID_MAX_LENGTH - suffix.length() - 1);
+        String prefix = sourceUserID.length() > prefixLength
+                ? sourceUserID.substring(0, prefixLength) : sourceUserID;
+        request.setUserID(prefix + "_" + suffix);
+        request.setStreamID(null);
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
     private boolean adminAllowed(HttpServletRequest request) {
         if (recordingAdminToken == null || recordingAdminToken.trim().isEmpty()) {
             return true;
@@ -567,36 +601,6 @@ public class ApiController {
         request.setClientIP(resolveClientIP(httpRequest));
         request.setUserAgent(httpRequest.getHeader("User-Agent"));
     }
-    private void prepareZegoUserID(RtcSessionRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("通话参数不能为空");
-        }
-
-        // 续 Token 必须继续使用本次通话已生成的随机 userID。
-        if (request.getLeaseID() != null && !request.getLeaseID().trim().isEmpty()) {
-            return;
-        }
-
-        String sourceUserID = request.getUserID() == null ? "" : request.getUserID().trim();
-        if (sourceUserID.isEmpty()) {
-            throw new IllegalArgumentException("用户 ID 不能为空");
-        }
-
-        byte[] randomBytes = new byte[18]; // 144 bit
-        RTC_USER_ID_RANDOM.nextBytes(randomBytes);
-        String suffix = Base64.getUrlEncoder()
-                .withoutPadding()
-                .encodeToString(randomBytes);
-
-        int maxPrefixLength = 64 - suffix.length() - 1;
-        String prefix = sourceUserID.length() > maxPrefixLength
-                ? sourceUserID.substring(0, maxPrefixLength)
-                : sourceUserID;
-
-        request.setUserID(prefix + "_" + suffix);
-        request.setStreamID(null);//必须有。否则前端传来的旧流 ID 没变，Token 中的用户和流会不一致。
-    }
-
 
     private String resolveClientIP(HttpServletRequest request) {
         String forwardedFor = request.getHeader("X-Forwarded-For");
@@ -608,8 +612,5 @@ public class ApiController {
             return realIP.trim();
         }
         return request.getRemoteAddr();
-
     }
-
-
 }

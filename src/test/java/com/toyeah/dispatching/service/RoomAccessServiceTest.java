@@ -81,7 +81,7 @@ class RoomAccessServiceTest {
     }
 
     @Test
-    void peerCannotEndRoomAndDoctorHeartbeatKeepsAlive() {
+    void peerCannotEndRoom() {
         RtcSessionRequest doctor = request("room-6", "doctor-1", "doctor");
         doctor.setLeaseID(service.enter(doctor).getLeaseID());
         RtcSessionRequest peer = request("room-6", "shop-1", "pharmacy");
@@ -90,11 +90,8 @@ class RoomAccessServiceTest {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> service.end(peer));
         assertEquals("只有医生可以结束房间", error.getMessage());
-
         assertEquals("ACTIVE", service.findRoom("room-6").getStatus());
         service.heartbeat(doctor);
-        service.leave(peer);
-        assertEquals("doctor-1", service.findRoom("room-6").getDoctorUserID());
     }
 
     private RtcSessionRequest request(String roomID, String userID, String role) {

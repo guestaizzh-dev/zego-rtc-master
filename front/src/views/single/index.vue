@@ -37,7 +37,6 @@
 <script>
     import axios from 'axios'
     import { message } from '../../components/message'
-    import { createRtcTrace } from '../../common/rtc-trace'
     import {
         createRtcStreamID,
         createStableRtcUserID,
@@ -107,7 +106,6 @@
                 networkStatus: '未连接',
                 networkWarning: false,
                 isFullscreen: false,
-                trace: null,
             }
         },
         mounted () {
@@ -119,12 +117,6 @@
             this.recordEnabled = this.normalizeQueryBoolean(this.$route.query.record)
             this.userID = this.$route.query.userID || createStableRtcUserID(this.roomID, this.role)
             this.streamID = createRtcStreamID(this.roomID, this.userID)
-            this.trace = createRtcTrace({
-                roomID: this.roomID,
-                userID: this.userID,
-                role: this.role,
-                streamID: this.streamID,
-            })
             document.addEventListener('fullscreenchange', this.handleFullscreenChange)
             window.addEventListener('message', this.handleParentCommand)
             window.addEventListener('pagehide', this.handlePageHide)
@@ -147,9 +139,6 @@
             if (!this.cleanupCompleted) {
                 this.sendPageHideBeacons()
             }
-            if (this.trace) {
-                this.trace.print()
-            }
         },
         methods: {
             async joinChannel () {
@@ -170,7 +159,7 @@
                 try {
                     this.joining = true
                     this.desc = '正在进入视频问诊...'
-                    this.trace.start('fetchRtcSession')
+                    const userName = this.userID
                     const session = await this.fetchRtcSession()
                     this.session = session
                     this.userID = session.userID
@@ -180,15 +169,11 @@
                         return
                     }
 
-                    this.trace.start('createEngine')
                     this.client = new window.ZegoExpressEngine(Number(session.appID), session.server || '')
                     this.client.setDebugVerbose(false)
                     this.bindEvents()
-                    this.trace.end('createEngine')
 
-                    this.trace.start('checkSystemRequirements')
                     const capability = await this.client.checkSystemRequirements()
-                    this.trace.end('checkSystemRequirements')
                     if (!capability.webRTC) {
                         throw new Error('当前浏览器不支持 WebRTC')
                     }
@@ -196,14 +181,12 @@
                         return
                     }
 
-                    this.trace.start('loginRoom')
                     const loggedIn = await this.client.loginRoom(
                         this.roomID,
                         session.token,
-                        { userID: this.userID, userName: this.userID },
+                        { userID: this.userID, userName },
                         { userUpdate: true }
                     )
-                    this.trace.end('loginRoom')
                     if (!loggedIn) {
                         throw new Error('登录 ZEGO 房间失败')
                     }
@@ -211,7 +194,6 @@
                         return
                     }
 
-                    this.trace.mark('publish_ready')
                     await this.initLocalStream()
                     if (this.terminating) {
                         return
@@ -232,10 +214,6 @@
                         return
                     }
                     console.error('加入房间失败', error)
-                    if (this.trace) {
-                        this.trace.fail('joinChannel', error)
-                        this.trace.print()
-                    }
                     const tip = this.formatError(error, '加入房间失败')
                     this.notifyParent('error', tip)
                     message(tip)
@@ -320,9 +298,6 @@
 
                 this.client.on('publisherStateUpdate', result => {
                     console.warn('推流状态', result)
-                    if (result && result.streamID === this.streamID && result.state === 'PUBLISHING') {
-                        this.trace.mark('publisherStateUpdate_PUBLISHING', { streamID: result.streamID })
-                    }
                     if (result && result.errorCode) {
                         this.retryPublishing(result.errorCode)
                     }
@@ -330,9 +305,6 @@
 
                 this.client.on('playerStateUpdate', result => {
                     console.warn('拉流状态', result)
-                    if (result && result.streamID && result.streamID === this.remoteStreamID && result.state === 'PLAYING') {
-                        this.trace.mark('playerStateUpdate_PLAYING', { streamID: result.streamID })
-                    }
                     if (result && result.state === 'NO_PLAY' && result.streamID && result.streamID === this.remoteStreamID) {
                         this.scheduleRemoteNoPlay(result.streamID)
                     }
@@ -354,7 +326,6 @@
                     if (updateType === 'ADD') {
                         const remote = streamList.find(item => item.streamID !== this.streamID)
                         if (remote) {
-                            this.trace.mark('roomStreamUpdate_ADD', { streamID: remote.streamID })
                             try {
                                 await this.playRemoteStream(remote.streamID, remote)
                             } catch (error) {
@@ -407,8 +378,7 @@
                 this.client.on('remoteCameraStatusUpdate', (streamID, status) => {
                     const muted = status === 'MUTE' || status === false
                     this.updateRemoteMedia(streamID, { videoMuted: muted })
-                    // 对端关摄像头：把接收方看到的远端画面隐藏，露出底层黑色窗口
-                    // 关键：不 stopPlayingStream，保留拉流通道，对端重开摄像头时立刻可见
+                    // Keep the remote stream active so video can resume without a new pull request.
                     this.applyRemoteVideoVisible(!muted)
                     this.remoteCameraOff = muted
                 })
@@ -418,7 +388,6 @@
             },
             async initLocalStream () {
                 try {
-                    this.trace.start('createZegoStream')
                     this.localStream = await this.client.createZegoStream({
                         camera: {
                             audio: true,
@@ -426,9 +395,7 @@
                             videoQuality: 2,
                         },
                     })
-                    this.trace.end('createZegoStream')
                 } catch (error) {
-                    this.trace.fail('createZegoStream', error)
                     throw new Error(this.formatError(error, '无法打开摄像头或麦克风，请检查浏览器授权和设备占用'))
                 }
                 this.playLocalPreview()
@@ -443,37 +410,19 @@
                 } else if (this.localStream.playVideo) {
                     this.localStream.playVideo(local, { objectFit: 'cover', enableAutoplayDialog: true })
                 }
-                // 重连/重建预览后，按当前 mute 状态重新应用一次，避免出现"已关却显示画面"
                 this.applyLocalPreviewCameraOff(this.cameraOff)
             },
             async publishLocalStream () {
                 try {
-                    this.trace.start('startPublishingStream')
                     await this.client.startPublishingStream(this.streamID, this.localStream)
-                    this.trace.end('startPublishingStream')
                     this.publishRetry = 0
-                    // 自动化埋点：推流成功时刻（performance.timeOrigin 相对值，供测试脚本换算成绝对时间）
-                    if (typeof window !== 'undefined' && typeof window.__onRtcEvent === 'function') {
-                        try {
-                            window.__onRtcEvent('publish_ok', {
-                                streamID: this.streamID,
-                                roomID: this.roomID,
-                                userID: this.userID,
-                                ts: performance.now(),
-                                absTs: Date.now(),
-                            })
-                        } catch (e) { /* 埋点异常不影响业务 */ }
-                    }
-                    this.trace.start('startLocalRecording')
                     await this.startLocalRecording()
-                    this.trace.end('startLocalRecording')
                 } catch (error) {
                     if (this.publishRetry < MAX_RETRY) {
                         this.publishRetry += 1
                         await this.wait(RETRY_DELAY)
                         return this.publishLocalStream()
                     }
-                    this.trace.fail('startPublishingStream', error)
                     throw new Error(this.formatError(error, '本地推流失败，请检查网络后重试'))
                 }
             },
@@ -495,32 +444,16 @@
                         streamID,
                         playOptions: playOptions || {},
                     })
-                    this.trace.start('startPlayingStream', { streamID })
                     this.remoteStream = playOptions
                         ? await this.client.startPlayingStream(streamID, playOptions)
                         : await this.client.startPlayingStream(streamID)
-                    this.trace.end('startPlayingStream', { streamID })
                     this.clearRemoteMediaElements()
                     this.remoteView = this.client.createRemoteStreamView(this.remoteStream)
-                    this.trace.mark('remoteView_play', { streamID })
                     this.remoteView.play(this.$refs.remote, { objectFit: 'contain', enableAutoplayDialog: true })
                     this.isDesc = false
                     this.playRetry = 0
-                    // 拉流成功时复位对端摄像头遮罩，避免上一次会话残留
                     this.remoteCameraOff = false
                     this.applyRemoteVideoVisible(true)
-                    // 自动化埋点：拉流首帧成功时刻（医生看到患者）
-                    if (typeof window !== 'undefined' && typeof window.__onRtcEvent === 'function') {
-                        try {
-                            window.__onRtcEvent('play_ok', {
-                                streamID,
-                                roomID: this.roomID,
-                                userID: this.userID,
-                                ts: performance.now(),
-                                absTs: Date.now(),
-                            })
-                        } catch (e) { /* 埋点异常不影响业务 */ }
-                    }
                     await this.startLocalRecording()
                 } catch (error) {
                     this.remoteStreamID = ''
@@ -850,34 +783,30 @@
                 this.cameraTogglePending = true
                 const next = !this.cameraOff
                 try {
-                    // 关键改动：retain=false 让 SDK 真正关闭摄像头采集与编码，
-                    // 对端会收到 remoteCameraStatusUpdate=MUTE，本地预览也停止出帧。
                     this.client.mutePublishStreamVideo(this.localStream, next, false)
                     this.cameraOff = next
-                    // 本地预览同步隐藏，让关闭方立即看到自己的画面变黑
                     this.applyLocalPreviewCameraOff(next)
                 } catch (error) {
                     console.warn('切换摄像头失败', error)
                     message('摄像头切换失败，请重试')
-                    // 失败不翻转状态，保持原状
                 } finally {
                     this.$nextTick(() => { this.cameraTogglePending = false })
                 }
             },
             applyLocalPreviewCameraOff (off) {
-                // 关闭时隐藏本地 video 元素，露出底层黑色容器；打开时恢复
                 const el = this.$refs.local && this.$refs.local.querySelector('video')
                 if (!el) {
                     return
                 }
                 el.style.display = off ? 'none' : ''
                 if (!off) {
-                    // 重新打开后强制刷新一次预览，避免残留黑帧
                     try {
                         if (el.play && el.paused) {
                             el.play().catch(() => {})
                         }
-                    } catch (e) { /* 忽略自动播放失败 */ }
+                    } catch (error) {
+                        // The preview is allowed to recover asynchronously.
+                    }
                 }
             },
             async handleOver () {
@@ -1137,14 +1066,11 @@
                 })
             },
             applyRemoteVideoVisible (visible) {
-                // 接收方控制远端 video 元素的显隐：
-                // 对端关摄像头时隐藏，露出底层黑色窗口；重开摄像头时恢复
                 const remote = this.$refs.remote
                 if (!remote) {
                     return
                 }
-                const videoEls = remote.querySelectorAll('video')
-                videoEls.forEach(el => {
+                remote.querySelectorAll('video').forEach(el => {
                     el.style.visibility = visible ? 'visible' : 'hidden'
                 })
             },
