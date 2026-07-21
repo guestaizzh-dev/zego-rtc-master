@@ -2,9 +2,16 @@
     <div class="wrapper">
         <div class="content">
             <div id="remoteVideo" class="main-window" ref="remote">
+                <div class="camera-off-mask" v-show="remoteCameraOff">
+                    <span class="camera-off-text">对方摄像头已关闭</span>
+                </div>
                 <span class="loading-text" v-show="isDesc">{{ desc }}</span>
             </div>
-            <div id="localVideo" class="sub-window" ref="local"></div>
+            <div id="localVideo" class="sub-window" ref="local">
+                <div class="camera-off-mask local" v-show="cameraOff">
+                    <span class="camera-off-text">摄像头已关闭</span>
+                </div>
+            </div>
             <div class="status-panel">
                 <span :class="{ network: true, warn: networkWarning }">{{ networkStatus }}</span>
                 <span class="room-label">房间：{{ roomID }}</span>
@@ -22,7 +29,7 @@
         <ul class="tab-bar">
             <li :class="{ silence: true, isSilence }" @click="setOrRelieveSilence"></li>
             <li class="over" @click="handleOver"></li>
-            <li :class="{ stop: true, isStop }" @click="stopOrOpenVideo"></li>
+            <li :class="{ stop: true, 'camera-off': cameraOff }" @click="toggleCamera"></li>
         </ul>
     </div>
 </template>
@@ -57,7 +64,9 @@
             return {
                 isSilence: false,
                 isDesc: true,
-                isStop: false,
+                cameraOff: false,
+                remoteCameraOff: false,
+                cameraTogglePending: false,
                 desc: '等待对方加入视频问诊...',
                 client: null,
                 localStream: null,
@@ -396,7 +405,12 @@
                     }
                 })
                 this.client.on('remoteCameraStatusUpdate', (streamID, status) => {
-                    this.updateRemoteMedia(streamID, { videoMuted: status === 'MUTE' || status === false })
+                    const muted = status === 'MUTE' || status === false
+                    this.updateRemoteMedia(streamID, { videoMuted: muted })
+                    // 对端关摄像头：把接收方看到的远端画面隐藏，露出底层黑色窗口
+                    // 关键：不 stopPlayingStream，保留拉流通道，对端重开摄像头时立刻可见
+                    this.applyRemoteVideoVisible(!muted)
+                    this.remoteCameraOff = muted
                 })
                 this.client.on('remoteMicStatusUpdate', (streamID, status) => {
                     this.updateRemoteMedia(streamID, { audioMuted: status === 'MUTE' || status === false })
@@ -429,6 +443,8 @@
                 } else if (this.localStream.playVideo) {
                     this.localStream.playVideo(local, { objectFit: 'cover', enableAutoplayDialog: true })
                 }
+                // 重连/重建预览后，按当前 mute 状态重新应用一次，避免出现"已关却显示画面"
+                this.applyLocalPreviewCameraOff(this.cameraOff)
             },
             async publishLocalStream () {
                 try {
@@ -490,6 +506,9 @@
                     this.remoteView.play(this.$refs.remote, { objectFit: 'contain', enableAutoplayDialog: true })
                     this.isDesc = false
                     this.playRetry = 0
+                    // 拉流成功时复位对端摄像头遮罩，避免上一次会话残留
+                    this.remoteCameraOff = false
+                    this.applyRemoteVideoVisible(true)
                     // 自动化埋点：拉流首帧成功时刻（医生看到患者）
                     if (typeof window !== 'undefined' && typeof window.__onRtcEvent === 'function') {
                         try {
@@ -530,6 +549,7 @@
                 this.remoteView = null
                 this.removeRemoteUser(stoppedStreamID)
                 this.clearRemoteMediaElements()
+                this.remoteCameraOff = false
             },
             clearRemoteMediaElements () {
                 const remote = this.$refs.remote
@@ -819,13 +839,46 @@
                 this.isSilence = !this.isSilence
                 this.client.mutePublishStreamAudio(this.localStream, this.isSilence)
             },
-            stopOrOpenVideo () {
+            toggleCamera () {
                 if (!this.localStream || !this.client) {
                     message('当前不能操作摄像头')
                     return
                 }
-                this.isStop = !this.isStop
-                this.client.mutePublishStreamVideo(this.localStream, this.isStop, true)
+                if (this.cameraTogglePending) {
+                    return
+                }
+                this.cameraTogglePending = true
+                const next = !this.cameraOff
+                try {
+                    // 关键改动：retain=false 让 SDK 真正关闭摄像头采集与编码，
+                    // 对端会收到 remoteCameraStatusUpdate=MUTE，本地预览也停止出帧。
+                    this.client.mutePublishStreamVideo(this.localStream, next, false)
+                    this.cameraOff = next
+                    // 本地预览同步隐藏，让关闭方立即看到自己的画面变黑
+                    this.applyLocalPreviewCameraOff(next)
+                } catch (error) {
+                    console.warn('切换摄像头失败', error)
+                    message('摄像头切换失败，请重试')
+                    // 失败不翻转状态，保持原状
+                } finally {
+                    this.$nextTick(() => { this.cameraTogglePending = false })
+                }
+            },
+            applyLocalPreviewCameraOff (off) {
+                // 关闭时隐藏本地 video 元素，露出底层黑色容器；打开时恢复
+                const el = this.$refs.local && this.$refs.local.querySelector('video')
+                if (!el) {
+                    return
+                }
+                el.style.display = off ? 'none' : ''
+                if (!off) {
+                    // 重新打开后强制刷新一次预览，避免残留黑帧
+                    try {
+                        if (el.play && el.paused) {
+                            el.play().catch(() => {})
+                        }
+                    } catch (e) { /* 忽略自动播放失败 */ }
+                }
             },
             async handleOver () {
                 if (this.terminating) {
@@ -919,6 +972,9 @@
                         this.remoteUsers = []
                         this.networkStatus = '已离开'
                         this.networkWarning = false
+                        this.cameraOff = false
+                        this.isSilence = false
+                        this.remoteCameraOff = false
                     }
                     const recordingStopPending = recordingStopped === 'pending'
                     const success = recordingStopped !== false && roomActionSucceeded
@@ -1078,6 +1134,18 @@
                         return item
                     }
                     return Object.assign({}, item, patch)
+                })
+            },
+            applyRemoteVideoVisible (visible) {
+                // 接收方控制远端 video 元素的显隐：
+                // 对端关摄像头时隐藏，露出底层黑色窗口；重开摄像头时恢复
+                const remote = this.$refs.remote
+                if (!remote) {
+                    return
+                }
+                const videoEls = remote.querySelectorAll('video')
+                videoEls.forEach(el => {
+                    el.style.visibility = visible ? 'visible' : 'hidden'
                 })
             },
             async toggleFullscreen () {
@@ -1251,7 +1319,27 @@
         .main-window {
             height: 100vh;
             width: 100%;
-            background: #20242c;
+            background: #000;
+
+            .camera-off-mask {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: #000;
+                z-index: 8;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                .camera-off-text {
+                    color: #b8bcc4;
+                    font-size: 18px;
+                    font-weight: 400;
+                    text-align: center;
+                }
+            }
 
             .loading-text {
                 display: block;
@@ -1268,13 +1356,34 @@
         .sub-window {
             width: 165px;
             height: 95px;
-            background: #25252d;
+            background: #000;
             position: absolute;
             z-index: 9;
             right: 8px;
             top: 8px;
             border: 1px solid #FFFFFF;
             overflow: hidden;
+
+            .camera-off-mask {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: #000;
+                z-index: 2;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                .camera-off-text {
+                    color: #b8bcc4;
+                    font-size: 12px;
+                    font-weight: 400;
+                    text-align: center;
+                    padding: 0 6px;
+                }
+            }
         }
 
         .status-panel {
@@ -1427,7 +1536,7 @@
                     background-size: 60px 54px;
                 }
 
-                &.isStop {
+                &.camera-off {
                     background: url("../../assets/img/icon/open.png") no-repeat center;
                     background-size: 60px 54px;
 

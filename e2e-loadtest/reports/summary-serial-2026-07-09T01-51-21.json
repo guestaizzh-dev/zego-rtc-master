@@ -1,0 +1,9 @@
+{
+  "tag": "serial-2026-07-09T01-51-21",
+  "total": 1,
+  "success": 0,
+  "fail": 1,
+  "successRate": 0,
+  "latencyMs": null,
+  "mode": "serial"
+}
