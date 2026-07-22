@@ -389,10 +389,16 @@
             async initLocalStream () {
                 try {
                     this.localStream = await this.client.createZegoStream({
+                        videoBitrate: 300,
+                        audioBitrate: 48,
                         camera: {
                             audio: true,
-                            video: true,
-                            videoQuality: 2,
+                            video: {
+                                quality: 1,
+                                width: 320,
+                                height: 240,
+                                frameRate: 15,
+                            },
                         },
                     })
                 } catch (error) {
