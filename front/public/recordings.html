@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>处惠保录制后台</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root {
+      --bg: #f3f6fa;
+      --panel: #ffffff;
+      --panel-soft: #f8fafc;
+      --line: #dfe6ef;
+      --text: #172033;
+      --muted: #667085;
+      --primary: #1769e0;
+      --primary-dark: #0f56bd;
+      --danger: #b42318;
+      --warning: #b54708;
+      --success: #067647;
+      --shadow: 0 16px 38px rgba(16, 24, 40, .08);
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: linear-gradient(180deg, #edf3f9 0, #f7f9fc 230px, var(--bg) 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      letter-spacing: 0;
+    }
+    button, input, select, textarea { font: inherit; }
+    button {
+      height: 38px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 6px;
+      color: #fff;
+      background: var(--primary);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .16s ease, transform .16s ease, box-shadow .16s ease;
+    }
+    button:hover { background: var(--primary-dark); }
+    button:not(:disabled):active { transform: translateY(1px); }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    button.secondary { color: #344054; background: #eef2f7; }
+    button.secondary:hover { background: #e2e8f0; }
+    button.warning { color: #111827; background: #fdb022; }
+    button.warning:hover { background: #f79009; }
+    input, select {
+      width: 100%;
+      height: 38px;
+      padding: 0 10px;
+      border: 1px solid #ccd5e1;
+      border-radius: 6px;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(23, 105, 224, .12); }
+    textarea {
+      width: 100%;
+      min-height: 78px;
+      padding: 10px;
+      border: 1px solid #ccd5e1;
+      border-radius: 6px;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+      resize: vertical;
+      word-break: break-all;
+    }
+    textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(23, 105, 224, .12); }
+    label { display: grid; gap: 6px; color: #475467; font-size: 13px; font-weight: 700; }
+    .login-view {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: linear-gradient(145deg, #f7fbff 0%, #eef3f9 52%, #f9fafb 100%);
+    }
+    .login-box {
+      width: min(420px, 100%);
+      padding: 30px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .94);
+      box-shadow: var(--shadow);
+    }
+    .login-title { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
+    .login-subtitle { margin: 0 0 24px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .login-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+    .remember { display: inline-flex; align-items: center; gap: 8px; color: #475467; font-size: 13px; }
+    .remember input { width: 16px; height: 16px; padding: 0; }
+    .login-error { min-height: 20px; margin-top: 12px; color: var(--danger); font-size: 13px; }
+    .app { display: none; min-height: 100vh; }
+    .app-shell { width: min(1660px, calc(100vw - 36px)); margin: 0 auto; padding: 18px 0 36px; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 0;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--primary);
+      font-weight: 900;
+      box-shadow: 0 12px 24px rgba(23, 105, 224, .22);
+    }
+    .brand h1 { margin: 0; font-size: 24px; line-height: 1.2; }
+    .brand p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .filters {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) 160px 130px 84px 84px;
+      gap: 14px;
+      align-items: end;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 10px 28px rgba(16, 24, 40, .05);
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .metric {
+      position: relative;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 8px 22px rgba(16, 24, 40, .04);
+    }
+    .metric:before {
+      content: "";
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      top: 0;
+      height: 3px;
+      border-radius: 0 0 3px 3px;
+      background: #b9c7d8;
+    }
+    .metric b { display: block; font-size: 22px; line-height: 1; }
+    .metric span { display: block; margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(640px, 1.15fr) minmax(520px, .85fr);
+      gap: 16px;
+      margin-top: 16px;
+      align-items: stretch;
+    }
+    .panel {
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .layout > .panel {
+      height: clamp(560px, calc(100vh - 330px), 760px);
+      display: flex;
+      flex-direction: column;
+    }
+    .detail-panel { position: sticky; top: 16px; }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-soft);
+    }
+    .panel-head h2 { margin: 0; font-size: 16px; }
+    .hint { color: var(--muted); font-size: 13px; }
+    .table-wrap { flex: 1; overflow: auto; }
+    table { width: 100%; min-width: 760px; border-collapse: collapse; }
+    th, td { padding: 12px 12px; border-bottom: 1px solid #edf1f6; text-align: left; vertical-align: top; font-size: 13px; white-space: nowrap; }
+    th { position: sticky; top: 0; z-index: 1; color: #475467; background: #f8fafc; font-weight: 800; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover td, tbody tr.active td { background: #f4f8ff; }
+    .task-id { max-width: 220px; overflow: hidden; text-overflow: ellipsis; font-weight: 800; }
+    .muted { color: var(--muted); }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .status.UPLOADED, .status.COMPLETED { color: var(--success); background: #dcfae6; }
+    .status.RUNNING, .status.STARTING { color: #175cd3; background: #d1e9ff; }
+    .status.STOPPED { color: var(--warning); background: #fef0c7; }
+    .status.UPLOAD_FAILED, .status.FAILED, .status.ABNORMAL { color: var(--danger); background: #fee4e2; }
+    .detail { flex: 1; min-height: 0; padding: 16px; overflow: auto; }
+    .player-wrap {
+      position: relative;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #05070d;
+    }
+    video { width: 100%; aspect-ratio: 16 / 9; display: block; background: #000; }
+    .player-empty {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: #98a2b3;
+      pointer-events: none;
+      font-size: 14px;
+    }
+    .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .detail-actions button { min-width: 108px; }
+    .play-url-box { display: none; margin-top: 12px; }
+    .play-url-box.show { display: block; }
+    .play-url-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .play-url-row b { font-size: 13px; color: #344054; }
+    .section-title { margin: 18px 0 10px; color: #344054; font-size: 13px; font-weight: 900; }
+    .kv { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 8px 12px; font-size: 13px; line-height: 1.55; }
+    .kv b { color: #667085; }
+    .kv span { min-width: 0; overflow-wrap: anywhere; }
+    .empty { padding: 46px 16px; color: var(--muted); text-align: center; font-size: 14px; }
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .page-info {
+      color: #475467;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .page-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .page-actions button {
+      min-width: 82px;
+      height: 34px;
+      padding: 0 12px;
+    }
+    .page-number {
+      min-width: 76px;
+      padding: 7px 10px;
+      border: 1px solid #d6deea;
+      border-radius: 6px;
+      color: #344054;
+      background: #f8fafc;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      max-width: min(430px, calc(100vw - 36px));
+      padding: 12px 14px;
+      border-radius: 8px;
+      color: #fff;
+      background: #101828;
+      box-shadow: 0 18px 44px rgba(16, 24, 40, .28);
+      transform: translateY(120px);
+      opacity: 0;
+      transition: .2s ease;
+      font-size: 14px;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    @media (max-width: 1080px) {
+      .filters, .layout { grid-template-columns: 1fr; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .table-wrap { max-height: none; }
+      .layout > .panel { height: auto; min-height: 0; }
+      .detail-panel { position: static; }
+      .pagination { align-items: flex-start; flex-direction: column; }
+    }
+    @media (max-width: 640px) {
+      .app-shell { width: calc(100vw - 20px); padding-top: 10px; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .filters { padding: 12px; }
+      .login-box { padding: 22px; }
+      table { min-width: 720px; }
+    }
+  </style>
+</head>
+<body>
+  <section class="login-view" id="loginView">
+    <div class="login-box">
+      <h1 class="login-title">处惠保录制后台登录</h1>
+      <p class="login-subtitle">输入访问口令后进入录制后台。口令只保存在当前浏览器，用于请求录制列表和播放地址。</p>
+      <label>访问口令
+        <input id="loginToken" type="password" autocomplete="current-password" placeholder="请输入后台口令">
+      </label>
+      <div class="login-row">
+        <label class="remember"><input id="rememberToken" type="checkbox">保持登录</label>
+        <button id="loginBtn">进入后台</button>
+      </div>
+      <div class="login-error" id="loginError"></div>
+    </div>
+  </section>
+
+  <section class="app" id="appView">
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">录</div>
+          <div>
+            <h1>处惠保录制后台</h1>
+            <p>按房间、订单和状态查询录制任务，播放私有 OSS 视频</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button id="refreshBtn" class="secondary">刷新</button>
+          <button id="logoutBtn" class="secondary">退出</button>
+        </div>
+      </header>
+
+      <section class="filters">
+        <label>房间号
+          <input id="roomID" placeholder="例如 1721811">
+        </label>
+        <label>订单号
+          <input id="orderID" placeholder="可为空">
+        </label>
+        <label>状态
+          <select id="status">
+            <option value="">全部</option>
+            <option value="UPLOADED">已上传</option>
+            <option value="RUNNING">录制中</option>
+            <option value="STOPPED">已停止</option>
+            <option value="UPLOAD_FAILED">上传失败</option>
+            <option value="FAILED">失败</option>
+            <option value="ABNORMAL">异常结束</option>
+          </select>
+        </label>
+        <label>每页数量
+          <select id="size">
+            <option>20</option>
+            <option selected>50</option>
+            <option>100</option>
+          </select>
+        </label>
+        <button id="searchBtn">查询</button>
+        <button id="resetBtn" class="secondary">重置</button>
+      </section>
+
+      <section class="summary">
+        <div class="metric"><b id="totalCount">0</b><span>总记录</span></div>
+        <div class="metric"><b id="uploadedCount">0</b><span>本页已上传</span></div>
+        <div class="metric"><b id="runningCount">0</b><span>本页录制中</span></div>
+        <div class="metric"><b id="failedCount">0</b><span>本页异常/失败</span></div>
+      </section>
+
+      <section class="layout">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>录制任务</h2>
+            <span class="hint" id="listHint">等待查询</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>房间 / 订单</th>
+                  <th>医生 / 患者</th>
+                  <th>状态</th>
+                  <th>时间</th>
+                  <th>文件</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <div class="page-info" id="pageInfo">第 1 页，每页 50 条</div>
+            <div class="page-actions">
+              <button id="firstPageBtn" class="secondary" disabled>首页</button>
+              <button id="prevPageBtn" class="secondary" disabled>上一页</button>
+              <div class="page-number" id="pageNumber">1</div>
+              <button id="nextPageBtn" class="secondary" disabled>下一页</button>
+              <button id="lastPageBtn" class="secondary" disabled>末页</button>
+            </div>
+          </div>
+        </div>
+
+        <aside class="panel detail-panel">
+          <div class="panel-head">
+            <h2>播放详情</h2>
+            <span class="hint" id="detailHint">未选择</span>
+          </div>
+          <div class="detail">
+            <div class="player-wrap">
+              <video id="player" controls playsinline></video>
+              <div class="player-empty" id="playerEmpty">选择已上传任务后点击播放，系统会自动生成临时播放地址</div>
+            </div>
+            <div class="detail-actions">
+              <button id="getUrlBtn" disabled>获取播放地址</button>
+              <button id="playBtn" disabled>播放视频</button>
+              <button id="openBtn" class="secondary" disabled>打开地址</button>
+              <button id="copyPlayUrlBtn" class="secondary" disabled>复制地址</button>
+              <button id="retryBtn" class="warning" disabled>重试上传</button>
+              <button id="copyBtn" class="secondary" disabled>复制 Object Key</button>
+            </div>
+            <div class="play-url-box" id="playUrlBox">
+              <div class="play-url-row">
+                <b>播放地址</b>
+                <span class="hint">签名地址会过期，长期查看时重新获取即可</span>
+              </div>
+              <textarea id="playUrlText" readonly></textarea>
+            </div>
+            <div class="section-title">录制任务</div>
+            <div class="kv" id="detail"></div>
+          </div>
+        </aside>
+      </section>
+    </div>
+  </section>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const state = { list: [], selected: null, playUrl: "", token: "", page: 1, size: 50, total: 0, totalPages: 0, hasNextPage: false, loading: false };
+    const $ = (id) => document.getElementById(id);
+    const tokenKey = "zegoRecordingAdminToken";
+    const sessionTokenKey = "zegoRecordingAdminSessionToken";
+
+    function storedToken() {
+      return sessionStorage.getItem(sessionTokenKey) || localStorage.getItem(tokenKey) || "";
+    }
+
+    function setLoggedIn(token, remember) {
+      state.token = token;
+      sessionStorage.setItem(sessionTokenKey, token);
+      if (remember) localStorage.setItem(tokenKey, token);
+      $("loginView").style.display = "none";
+      $("appView").style.display = "block";
+    }
+
+    function logout() {
+      state.token = "";
+      state.list = [];
+      state.selected = null;
+      state.playUrl = "";
+      state.page = 1;
+      state.total = 0;
+      state.totalPages = 0;
+      state.hasNextPage = false;
+      sessionStorage.removeItem(sessionTokenKey);
+      localStorage.removeItem(tokenKey);
+      $("loginToken").value = "";
+      $("appView").style.display = "none";
+      $("loginView").style.display = "grid";
+      renderList();
+      renderDetail(null);
+    }
+
+    function fmtTime(value) {
+      if (!value) return "-";
+      return new Date(Number(value)).toLocaleString("zh-CN", { hour12: false });
+    }
+
+    function fmtSize(value) {
+      const size = Number(value || 0);
+      if (!size) return "-";
+      if (size >= 1024 * 1024 * 1024) return (size / 1024 / 1024 / 1024).toFixed(2) + " GB";
+      if (size >= 1024 * 1024) return (size / 1024 / 1024).toFixed(2) + " MB";
+      return (size / 1024).toFixed(1) + " KB";
+    }
+
+    function statusText(status) {
+      const normalized = String(status || "").toUpperCase();
+      const map = {
+        STARTING: "启动中",
+        RUNNING: "录制中",
+        RUN: "录制中",
+        STOPPED: "已停止",
+        STOP: "已停止",
+        COMPLETED: "进程完成",
+        COMPLETE: "进程完成",
+        UPLOADED: "已上传",
+        UPLOAD: "已上传",
+        UPLOAD_FAILED: "上传失败",
+        FAILED: "失败",
+        FAIL: "失败",
+        ABNORMAL: "异常结束"
+      };
+      return map[normalized] || status || "-";
+    }
+
+    function personText(value, fallback) {
+      const raw = String(value || "").trim();
+      if (!raw) return fallback;
+      const normalized = raw.toLowerCase();
+      const roleMap = {
+        doctor: "医生",
+        patient: "患者",
+        guest: "患者",
+        mp: "小程序",
+        shop: "药店",
+        pharmacy: "药店"
+      };
+      return roleMap[normalized] || raw;
+    }
+
+    function displayName(primary, fallbackValue, fallbackLabel) {
+      return personText(primary || fallbackValue, fallbackLabel);
+    }
+
+    function toast(text) {
+      $("toast").textContent = text;
+      $("toast").classList.add("show");
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => $("toast").classList.remove("show"), 2600);
+    }
+
+    async function api(url, options) {
+      const merged = Object.assign({ headers: {} }, options || {});
+      merged.headers = Object.assign({}, merged.headers || {});
+      if (state.token) merged.headers["X-Admin-Token"] = state.token;
+      const res = await fetch(url, merged);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "请求失败");
+      return data;
+    }
+
+    async function login() {
+      const token = $("loginToken").value.trim();
+      $("loginError").textContent = "";
+      $("loginBtn").disabled = true;
+      try {
+        state.token = token;
+        await api("/api/admin/recordings?page=1&size=1");
+        setLoggedIn(token, $("rememberToken").checked);
+        await loadList();
+      } catch (err) {
+        state.token = "";
+        $("loginError").textContent = err.message === "无权访问录制后台" ? "口令错误，请重新输入" : err.message;
+      } finally {
+        $("loginBtn").disabled = false;
+      }
+    }
+
+    async function loadList() {
+      if (state.loading) return;
+      state.loading = true;
+      $("searchBtn").disabled = true;
+      $("refreshBtn").disabled = true;
+      $("firstPageBtn").disabled = true;
+      $("prevPageBtn").disabled = true;
+      $("nextPageBtn").disabled = true;
+      $("lastPageBtn").disabled = true;
+      $("listHint").textContent = "查询中";
+      try {
+        const previousTaskID = state.selected && state.selected.taskID;
+        const params = new URLSearchParams();
+        ["roomID", "orderID", "status"].forEach((id) => {
+          const value = $(id).value.trim();
+          if (value) params.set(id, value);
+        });
+        state.size = Number($("size").value || 50);
+        params.set("page", String(state.page));
+        params.set("size", String(state.size));
+        const pageData = await api("/api/admin/recordings/page?" + params.toString());
+        state.list = Array.isArray(pageData.list) ? pageData.list : [];
+        state.page = Number(pageData.page || state.page);
+        state.size = Number(pageData.size || state.size);
+        state.total = Number(pageData.total || 0);
+        state.totalPages = Number(pageData.totalPages || 0);
+        state.hasNextPage = Boolean(pageData.hasNextPage);
+        renderList();
+        renderMetrics();
+        renderPagination();
+        $("listHint").textContent = state.total
+          ? "共 " + state.total + " 条，第 " + state.page + "/" + state.totalPages + " 页"
+          : "暂无记录";
+        const nextTask = state.list.find((item) => item.taskID === previousTaskID) || state.list[0];
+        if (nextTask) {
+          selectTask(nextTask.taskID, nextTask.taskID === previousTaskID);
+        } else {
+          state.selected = null;
+          state.playUrl = "";
+          renderDetail(null);
+        }
+      } catch (err) {
+        $("listHint").textContent = "查询失败";
+        if (err.message === "无权访问录制后台") logout();
+        toast(err.message);
+      } finally {
+        state.loading = false;
+        $("searchBtn").disabled = false;
+        $("refreshBtn").disabled = false;
+        renderPagination();
+      }
+    }
+
+    function searchFirstPage() {
+      state.page = 1;
+      loadList();
+    }
+
+    function prevPage() {
+      if (state.page <= 1 || state.loading) return;
+      state.page -= 1;
+      loadList();
+    }
+
+    function nextPage() {
+      if (!state.hasNextPage || state.loading) return;
+      state.page += 1;
+      loadList();
+    }
+
+    function firstPage() {
+      if (state.page <= 1 || state.loading) return;
+      state.page = 1;
+      loadList();
+    }
+
+    function lastPage() {
+      if (!state.totalPages || state.page >= state.totalPages || state.loading) return;
+      state.page = state.totalPages;
+      loadList();
+    }
+
+    function renderPagination() {
+      const start = state.list.length ? (state.page - 1) * state.size + 1 : 0;
+      const end = state.list.length ? start + state.list.length - 1 : 0;
+      $("pageNumber").textContent = state.totalPages ? `${state.page} / ${state.totalPages}` : String(state.page);
+      $("pageInfo").textContent = state.list.length
+        ? `共 ${state.total} 条，显示第 ${start}-${end} 条，每页 ${state.size} 条`
+        : `暂无记录，每页 ${state.size} 条`;
+      const atFirst = state.page <= 1;
+      const atLast = !state.totalPages || state.page >= state.totalPages;
+      $("firstPageBtn").disabled = state.loading || atFirst;
+      $("prevPageBtn").disabled = state.loading || atFirst;
+      $("nextPageBtn").disabled = state.loading || !state.hasNextPage;
+      $("lastPageBtn").disabled = state.loading || atLast;
+    }
+
+    function renderMetrics() {
+      const uploaded = state.list.filter((item) => item.status === "UPLOADED").length;
+      const running = state.list.filter((item) => item.status === "RUNNING" || item.status === "STARTING").length;
+      const failed = state.list.filter((item) => ["UPLOAD_FAILED", "FAILED", "ABNORMAL"].includes(item.status)).length;
+      $("totalCount").textContent = state.total;
+      $("uploadedCount").textContent = uploaded;
+      $("runningCount").textContent = running;
+      $("failedCount").textContent = failed;
+    }
+
+    function renderList() {
+      const tbody = $("tbody");
+      if (!state.list.length) {
+        tbody.innerHTML = '<tr><td colspan="5"><div class="empty">暂无录制任务</div></td></tr>';
+        renderMetrics();
+        renderDetail(null);
+        renderPagination();
+        return;
+      }
+      tbody.innerHTML = state.list.map((item) => `
+        <tr class="${state.selected && state.selected.taskID === item.taskID ? "active" : ""}" onclick="selectTask('${escapeAttr(item.taskID)}')">
+          <td>${escapeHtml(item.roomID || "-")}<div class="muted">${escapeHtml(item.orderID || "无订单号")}</div></td>
+          <td>${escapeHtml(displayName(item.doctorName, item.doctorUserID, "未记录医生"))}<div class="muted">${escapeHtml(displayName(item.peerName, item.peerUserID, "未记录患者"))}</div></td>
+          <td><span class="status ${escapeHtml(item.status || "")}">${statusText(item.status)}</span></td>
+          <td>${fmtTime(item.startedAt)}<div class="muted">${fmtTime(item.endedAt)}</div></td>
+          <td>${fmtSize(item.fileSize)}<div class="muted">${item.durationSeconds ? Number(item.durationSeconds).toFixed(1) + " 秒" : "未生成时长"}</div></td>
+        </tr>
+      `).join("");
+    }
+
+    function selectTask(taskID, preservePlayback) {
+      const previousTaskID = state.selected && state.selected.taskID;
+      state.selected = state.list.find((item) => item.taskID === taskID) || null;
+      if (!preservePlayback || previousTaskID !== taskID) {
+        state.playUrl = "";
+      }
+      renderList();
+      renderDetail(state.selected, Boolean(preservePlayback && previousTaskID === taskID));
+    }
+
+    function renderDetail(item, preservePlayback) {
+      if (!item) {
+        state.playUrl = "";
+      }
+      if (!preservePlayback) {
+        $("player").removeAttribute("src");
+        $("player").load();
+        $("playerEmpty").style.display = "grid";
+      }
+      $("getUrlBtn").disabled = !item || !item.ossObjectKey;
+      $("playBtn").disabled = !item || !item.ossObjectKey;
+      $("openBtn").disabled = !state.playUrl;
+      $("copyPlayUrlBtn").disabled = !state.playUrl;
+      $("retryBtn").disabled = !item || !!item.ossObjectKey;
+      $("copyBtn").disabled = !item || !item.ossObjectKey;
+      $("playUrlBox").classList.toggle("show", Boolean(state.playUrl));
+      $("playUrlText").value = state.playUrl || "";
+      $("detailHint").textContent = item ? statusText(item.status) : "未选择";
+      if (!item) {
+        $("detail").innerHTML = '<b>提示</b><span>请选择左侧录制任务查看播放详情</span>';
+        return;
+      }
+      $("detail").innerHTML = `
+        <b>任务 ID</b><span>${escapeHtml(item.taskID || "-")}</span>
+        <b>房间号</b><span>${escapeHtml(item.roomID || "-")}</span>
+        <b>订单号</b><span>${escapeHtml(item.orderID || "-")}</span>
+        <b>状态</b><span>${statusText(item.status)}</span>
+        <b>开始时间</b><span>${fmtTime(item.startedAt)}</span>
+        <b>结束时间</b><span>${fmtTime(item.endedAt)}</span>
+        <b>上传时间</b><span>${fmtTime(item.uploadedAt)}</span>
+        <b>文件大小</b><span>${fmtSize(item.fileSize)}</span>
+        <b>时长</b><span>${item.durationSeconds ? Number(item.durationSeconds).toFixed(1) + " 秒" : "-"}</span>
+        <b>OSS Bucket</b><span>${escapeHtml(item.ossBucket || "-")}</span>
+        <b>Object Key</b><span>${escapeHtml(item.ossObjectKey || "-")}</span>
+        <b>本地文件</b><span>${escapeHtml(item.outputFile || "-")}</span>
+        <b>本地已删</b><span>${item.localFileDeleted ? "是" : "否"}</span>
+        <b>日志文件</b><span>${escapeHtml(item.logFile || "-")}</span>
+        <b>任务消息</b><span>${escapeHtml(item.lastError || item.message || "-")}</span>
+      `;
+    }
+
+    async function getPlayUrl() {
+      if (!state.selected) return;
+      $("getUrlBtn").disabled = true;
+      try {
+        const data = await api(`/api/admin/recordings/${encodeURIComponent(state.selected.taskID)}/play-url`);
+        state.playUrl = data.playUrl;
+        $("playUrlText").value = data.playUrl || "";
+        $("playUrlBox").classList.add("show");
+        $("openBtn").disabled = !state.playUrl;
+        $("copyPlayUrlBtn").disabled = !state.playUrl;
+        toast("播放地址已生成");
+        return state.playUrl;
+      } catch (err) {
+        toast(err.message);
+        return "";
+      } finally {
+        $("getUrlBtn").disabled = !state.selected || !state.selected.ossObjectKey;
+      }
+    }
+
+    async function playSelected() {
+      if (!state.selected) return;
+      try {
+        const playUrl = state.playUrl || await getPlayUrl();
+        if (!playUrl) return;
+        $("player").src = playUrl;
+        $("playerEmpty").style.display = "none";
+        await $("player").play().catch(() => {});
+      } catch (err) {
+        toast(err.message);
+      }
+    }
+
+    async function retrySelected() {
+      if (!state.selected) return;
+      try {
+        await api(`/api/admin/recordings/${encodeURIComponent(state.selected.taskID)}/retry-upload`, { method: "POST" });
+        toast("已提交重试上传");
+        await loadList();
+      } catch (err) {
+        toast(err.message);
+      }
+    }
+
+    async function copyObjectKey() {
+      if (!state.selected || !state.selected.ossObjectKey) return;
+      await writeClipboard(state.selected.ossObjectKey, "Object Key 已复制");
+    }
+
+    async function copyPlayUrl() {
+      if (!state.playUrl) return;
+      await writeClipboard(state.playUrl, "播放地址已复制");
+    }
+
+    async function writeClipboard(text, successText) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.setAttribute("readonly", "");
+          textarea.style.position = "fixed";
+          textarea.style.left = "-9999px";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textarea);
+        }
+        toast(successText);
+      } catch (err) {
+        toast("复制失败，请手动选择文本复制");
+      }
+    }
+
+    function openPlayUrl() {
+      if (state.playUrl) window.open(state.playUrl, "_blank", "noopener,noreferrer");
+    }
+
+    function resetFilters() {
+      ["roomID", "orderID", "status"].forEach((id) => { $(id).value = ""; });
+      $("size").value = "50";
+      state.page = 1;
+      loadList();
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replace(/\\/g, "\\\\");
+    }
+
+    $("loginBtn").addEventListener("click", login);
+    $("loginToken").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
+    ["roomID", "orderID"].forEach((id) => {
+      $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") searchFirstPage(); });
+    });
+    ["status", "size"].forEach((id) => {
+      $(id).addEventListener("change", searchFirstPage);
+    });
+    $("searchBtn").addEventListener("click", searchFirstPage);
+    $("refreshBtn").addEventListener("click", loadList);
+    $("resetBtn").addEventListener("click", resetFilters);
+    $("firstPageBtn").addEventListener("click", firstPage);
+    $("prevPageBtn").addEventListener("click", prevPage);
+    $("nextPageBtn").addEventListener("click", nextPage);
+    $("lastPageBtn").addEventListener("click", lastPage);
+    $("logoutBtn").addEventListener("click", logout);
+    $("getUrlBtn").addEventListener("click", getPlayUrl);
+    $("playBtn").addEventListener("click", playSelected);
+    $("openBtn").addEventListener("click", openPlayUrl);
+    $("copyPlayUrlBtn").addEventListener("click", copyPlayUrl);
+    $("retryBtn").addEventListener("click", retrySelected);
+    $("copyBtn").addEventListener("click", copyObjectKey);
+
+    const initialToken = storedToken();
+    if (initialToken) {
+      $("loginToken").value = initialToken;
+      setLoggedIn(initialToken, Boolean(localStorage.getItem(tokenKey)));
+      loadList();
+    }
+  </script>
+</body>
+</html>

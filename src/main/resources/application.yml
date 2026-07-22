@@ -1,0 +1,54 @@
+server:
+  port: 9003
+
+spring:
+  task:
+    scheduling:
+      pool:
+        size: 8
+
+zego:
+  app-id: ${ZEGO_APP_ID:563636194}
+  server: ${ZEGO_SERVER:wss://accesshub-wss.zego.im/accesshub}
+  server-secret: ${ZEGO_SERVER_SECRET:}
+  token-ttl-seconds: ${ZEGO_TOKEN_TTL_SECONDS:3600}
+
+rtc:
+  server-token: ${RTC_SERVER_TOKEN:}
+  room:
+    slot-timeout-seconds: ${RTC_ROOM_SLOT_TIMEOUT_SECONDS:1800}
+    sweep-interval-ms: ${RTC_ROOM_SWEEP_INTERVAL_MS:60000}
+  persistence:
+    enabled: ${RTC_PERSISTENCE_ENABLED:false}
+    fail-fast: ${RTC_PERSISTENCE_FAIL_FAST:false}
+    jdbc-url: ${RTC_MYSQL_JDBC_URL:}
+    username: ${RTC_MYSQL_USERNAME:}
+    password: ${RTC_MYSQL_PASSWORD:}
+
+recording:
+  enabled: ${RECORDING_ENABLED:false}
+  work-dir: ${RECORDING_WORK_DIR:/tmp/chbzg-rtc-recordings}
+  command-template: ${RECORDING_COMMAND_TEMPLATE:}
+  max-seconds: ${RECORDING_MAX_SECONDS:600}
+  upload-max-attempts: ${RECORDING_UPLOAD_MAX_ATTEMPTS:3}
+  upload-retry-delay-ms: ${RECORDING_UPLOAD_RETRY_DELAY_MS:15000}
+  delete-local-after-upload: ${RECORDING_DELETE_LOCAL_AFTER_UPLOAD:true}
+  failed-file-retention-hours: ${RECORDING_FAILED_FILE_RETENTION_HOURS:72}
+  min-free-disk-mb: ${RECORDING_MIN_FREE_DISK_MB:2048}
+  admin-token: ${RECORDING_ADMIN_TOKEN:}
+  oss:
+    enabled: ${OSS_ENABLED:false}
+    endpoint: ${OSS_ENDPOINT:}
+    access-key-id: ${OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+    bucket: ${OSS_BUCKET:}
+    public-base-url: ${OSS_PUBLIC_BASE_URL:}
+    object-prefix: ${OSS_OBJECT_PREFIX:rtc-recordings/}
+    play-url-expire-seconds: ${OSS_PLAY_URL_EXPIRE_SECONDS:7200}
+
+chbzg:
+  order-info:
+    url: ${CHBZG_ORDER_INFO_URL:}
+    token: ${CHBZG_ORDER_INFO_TOKEN:}
+    connect-timeout-ms: ${CHBZG_ORDER_INFO_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${CHBZG_ORDER_INFO_READ_TIMEOUT_MS:5000}

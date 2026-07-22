@@ -1,0 +1,2 @@
+iter,roomID,t0,t1,latencyMs,mode,ok,error,ts
+1,timeout,0,0,45000,serial,false,timeout>45000ms,2026-07-09T03:51:24.038Z
